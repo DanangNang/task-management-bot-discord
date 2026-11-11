@@ -1,4 +1,3 @@
-```markdown
 # 🤖 Daily Task Bot
 
 > *"One Board. One Update. Every Deadline."*
