@@ -1,0 +1,23 @@
+{
+  "name": "management-dc",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@prisma/client": "^7.10.1",
+    "dayjs": "^1.11.23",
+    "discord.js": "^14.28.1",
+    "dotenv": "^18.0.10",
+    "node-cron": "^4.6.0"
+  },
+  "devDependencies": {
+    "prisma": "^7.10.1"
+  }
+}
