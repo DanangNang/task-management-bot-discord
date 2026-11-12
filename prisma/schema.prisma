@@ -1,13 +1,46 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
-generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-}
-
 datasource db {
   provider = "sqlite"
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum TaskStatus {
+  ACTIVE
+  COMPLETED
+  EXPIRED
+  DELETED
+}
+
+model GuildConfig {
+  id                  String   @id
+  boardChannelId      String?
+  dailyBoardMessageId String?
+  dailyUpdateTime     String   @default("08:00")
+  timezone            String   @default("Asia/Jakarta")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Task {
+  id          Int          @id @default(autoincrement())
+  guildId     String
+  name        String
+  startAt     DateTime
+  deadline    DateTime
+  status      TaskStatus   @default(ACTIVE)
+  createdBy   String
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  members     TaskMember[]
+}
+
+model TaskMember {
+  id            Int    @id @default(autoincrement())
+  taskId        Int
+  discordUserId String
+  task          Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, discordUserId])
 }
