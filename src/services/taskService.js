@@ -114,6 +114,85 @@ async function markTaskExpired(taskId) {
     });
 }
 
+/**
+ * Mengambil seluruh task (aktif, terlewat/selesai, dan dihapus) dalam satu server
+ */
+async function getAllTasks(guildId) {
+    return await prisma.task.findMany({
+        where: { guildId },
+        include: {
+            members: true,
+        },
+        orderBy: {
+            id: 'desc',
+        },
+    });
+}
+
+/**
+ * Menghapus permanen seluruh task berstatus DELETED pada server tertentu,
+ * lalu mengurutkan ulang ID task yang tersisa mulai dari 1 (beserta relasi TaskMember).
+ */
+async function clearDeletedTasks(guildId) {
+    return await prisma.$transaction(async (tx) => {
+        // 1. Hitung jumlah task berstatus DELETED yang akan dihapus
+        const deletedCount = await tx.task.count({
+            where: {
+                guildId,
+                status: 'DELETED',
+            },
+        });
+
+        if (deletedCount === 0) {
+            return { deletedCount: 0, remainingCount: 0 };
+        }
+
+        // 2. Hapus semua task berstatus DELETED (TaskMember terkait ikut terhapus karena onDelete: Cascade)
+        await tx.task.deleteMany({
+            where: {
+                guildId,
+                status: 'DELETED',
+            },
+        });
+
+        // 3. Ambil seluruh task yang tersisa di database (diurutkan berdasarkan ID lama)
+        const remainingTasks = await tx.task.findMany({
+            include: { members: true },
+            orderBy: { id: 'asc' },
+        });
+
+        // 4. Hapus sementara tabel Task & reset auto-increment SQLite agar ID kembali dari 1
+        await tx.taskMember.deleteMany({});
+        await tx.task.deleteMany({});
+        await tx.$executeRawUnsafe(`DELETE FROM sqlite_sequence WHERE name IN ('Task', 'TaskMember');`);
+
+        // 5. Masukkan kembali seluruh task yang tersisa dengan urutan ID baru (1, 2, 3, ...)
+        for (const oldTask of remainingTasks) {
+            await tx.task.create({
+                data: {
+                    guildId: oldTask.guildId,
+                    name: oldTask.name,
+                    startAt: oldTask.startAt,
+                    deadline: oldTask.deadline,
+                    status: oldTask.status,
+                    createdBy: oldTask.createdBy,
+                    createdAt: oldTask.createdAt,
+                    members: {
+                        create: oldTask.members.map(m => ({
+                            discordUserId: m.discordUserId,
+                        })),
+                    },
+                },
+            });
+        }
+
+        return {
+            deletedCount,
+            remainingCount: remainingTasks.length,
+        };
+    });
+}
+
 module.exports = {
     createTask,
     getActiveTasks,
@@ -122,4 +201,6 @@ module.exports = {
     completeTask,
     deleteTask,
     markTaskExpired,
+    getAllTasks,
+    clearDeletedTasks,
 };

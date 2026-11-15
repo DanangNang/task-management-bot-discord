@@ -12,7 +12,7 @@ const {
 } = require('discord.js');
 
 const taskService = require('../services/taskService');
-const { parseInputDate, formatDateIndo } = require('../utils/dateUtils');
+const { combineDateAndTime, formatDateIndo, getCurrentDate } = require('../utils/dateUtils');
 const { calculateTaskStatus } = require('../utils/statusUtils');
 
 // Penyimpanan sementara di memori sebelum user selesai memilih member di Select Menu
@@ -30,12 +30,7 @@ module.exports = {
             sub.setName('list').setDescription('Menampilkan daftar task aktif saat ini')
         )
         .addSubcommand(sub =>
-            sub
-                .setName('view')
-                .setDescription('Melihat detail lengkap sebuah task')
-                .addIntegerOption(opt =>
-                    opt.setName('id').setDescription('ID Task').setRequired(true)
-                )
+            sub.setName('all').setDescription('Menampilkan semua riwayat task (Aktif, Terlewat, Deleted)')
         )
         .addSubcommand(sub =>
             sub
@@ -60,6 +55,11 @@ module.exports = {
                 .addIntegerOption(opt =>
                     opt.setName('id').setDescription('ID Task').setRequired(true)
                 )
+        )
+        .addSubcommand(sub =>
+            sub
+                .setName('clear')
+                .setDescription('Menghapus permanen semua task berstatus Deleted & merapikan urutan ID')
         ),
 
     // 1. Handler Slash Command (/task ...)
@@ -67,6 +67,8 @@ module.exports = {
         const subcommand = interaction.options.getSubcommand();
 
         if (subcommand === 'create') {
+            const todayStr = getCurrentDate().format('YYYY-MM-DD');
+
             const modal = new ModalBuilder()
                 .setCustomId('modal_task_create')
                 .setTitle('Buat Task Kegiatan Baru');
@@ -78,24 +80,40 @@ module.exports = {
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
-            const startInput = new TextInputBuilder()
-                .setCustomId('task_start')
-                .setLabel('Waktu Mulai (YYYY-MM-DD HH:mm)')
-                .setPlaceholder('Contoh: 2026-11-13 09:00')
+            const startDateInput = new TextInputBuilder()
+                .setCustomId('task_start_date')
+                .setLabel('Tanggal Mulai (YYYY-MM-DD)')
+                .setValue(todayStr) // Otomatis terisi tanggal hari ini
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
-            const deadlineInput = new TextInputBuilder()
-                .setCustomId('task_deadline')
-                .setLabel('Deadline (YYYY-MM-DD HH:mm)')
-                .setPlaceholder('Contoh: 2026-11-16 23:59')
+            const startTimeInput = new TextInputBuilder()
+                .setCustomId('task_start_time')
+                .setLabel('Jam Mulai (HH:mm) - Kosongkan = 08:00')
+                .setPlaceholder('08:00')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
+
+            const deadlineDateInput = new TextInputBuilder()
+                .setCustomId('task_deadline_date')
+                .setLabel('Tanggal Deadline (YYYY-MM-DD)')
+                .setPlaceholder('Contoh: 2026-11-20')
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
+
+            const deadlineTimeInput = new TextInputBuilder()
+                .setCustomId('task_deadline_time')
+                .setLabel('Jam Deadline (HH:mm) - Kosongkan = 23:59')
+                .setPlaceholder('23:59')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
 
             modal.addComponents(
                 new ActionRowBuilder().addComponents(nameInput),
-                new ActionRowBuilder().addComponents(startInput),
-                new ActionRowBuilder().addComponents(deadlineInput)
+                new ActionRowBuilder().addComponents(startDateInput),
+                new ActionRowBuilder().addComponents(startTimeInput),
+                new ActionRowBuilder().addComponents(deadlineDateInput),
+                new ActionRowBuilder().addComponents(deadlineTimeInput)
             );
 
             return await interaction.showModal(modal);
@@ -123,24 +141,40 @@ module.exports = {
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
-            const startInput = new TextInputBuilder()
-                .setCustomId('task_start')
-                .setLabel('Waktu Mulai (YYYY-MM-DD HH:mm)')
-                .setValue(formatDateIndo(task.startAt, 'YYYY-MM-DD HH:mm'))
+            const startDateInput = new TextInputBuilder()
+                .setCustomId('task_start_date')
+                .setLabel('Tanggal Mulai (YYYY-MM-DD)')
+                .setValue(formatDateIndo(task.startAt, 'YYYY-MM-DD'))
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
 
-            const deadlineInput = new TextInputBuilder()
-                .setCustomId('task_deadline')
-                .setLabel('Deadline (YYYY-MM-DD HH:mm)')
-                .setValue(formatDateIndo(task.deadline, 'YYYY-MM-DD HH:mm'))
+            const startTimeInput = new TextInputBuilder()
+                .setCustomId('task_start_time')
+                .setLabel('Jam Mulai (HH:mm)')
+                .setValue(formatDateIndo(task.startAt, 'HH:mm'))
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
+
+            const deadlineDateInput = new TextInputBuilder()
+                .setCustomId('task_deadline_date')
+                .setLabel('Tanggal Deadline (YYYY-MM-DD)')
+                .setValue(formatDateIndo(task.deadline, 'YYYY-MM-DD'))
                 .setStyle(TextInputStyle.Short)
                 .setRequired(true);
+
+            const deadlineTimeInput = new TextInputBuilder()
+                .setCustomId('task_deadline_time')
+                .setLabel('Jam Deadline (HH:mm)')
+                .setValue(formatDateIndo(task.deadline, 'HH:mm'))
+                .setStyle(TextInputStyle.Short)
+                .setRequired(false);
 
             modal.addComponents(
                 new ActionRowBuilder().addComponents(nameInput),
-                new ActionRowBuilder().addComponents(startInput),
-                new ActionRowBuilder().addComponents(deadlineInput)
+                new ActionRowBuilder().addComponents(startDateInput),
+                new ActionRowBuilder().addComponents(startTimeInput),
+                new ActionRowBuilder().addComponents(deadlineDateInput),
+                new ActionRowBuilder().addComponents(deadlineTimeInput)
             );
 
             return await interaction.showModal(modal);
@@ -168,38 +202,59 @@ module.exports = {
                 .setTitle('📋 Daftar Task Aktif')
                 .setDescription(lines.join('\n\n'))
                 .setColor(0x2b2d31)
-                .setFooter({ text: 'Gunakan /task view id:<nomor> untuk detail lengkap' });
+                .setFooter({ text: 'Gunakan /task all untuk melihat seluruh riwayat task' });
 
             return await interaction.reply({ embeds: [embed], ephemeral: true });
         }
 
-        if (subcommand === 'view') {
-            const taskId = interaction.options.getInteger('id');
-            const task = await taskService.getTaskById(taskId);
+        if (subcommand === 'all') {
+            const tasks = await taskService.getAllTasks(interaction.guildId);
 
-            if (!task || task.guildId !== interaction.guildId) {
+            if (tasks.length === 0) {
                 return await interaction.reply({
-                    content: `❌ Task dengan ID **#${taskId}** tidak ditemukan.`,
+                    content: '📭 Belum ada riwayat task sama sekali di server ini.',
                     ephemeral: true,
                 });
             }
 
-            const st = calculateTaskStatus(task.deadline);
-            const mentions = task.members.length > 0
-                ? task.members.map(m => `<@${m.discordUserId}>`).join(', ')
-                : 'Tidak ada anggota ditugaskan';
+            const aktifTasks = tasks.filter(t => t.status === 'ACTIVE');
+            const terlewatTasks = tasks.filter(t => t.status === 'EXPIRED' || t.status === 'COMPLETED');
+            const deletedTasks = tasks.filter(t => t.status === 'DELETED');
+
+            const formatSection = (list, showDeadlineBadge = false) => {
+                if (list.length === 0) return '_Tidak ada task_';
+                return list
+                    .map(t => {
+                        const mentions = t.members.length > 0
+                            ? t.members.map(m => `<@${m.discordUserId}>`).join(' ')
+                            : '_Tidak ada_';
+                        const badge = showDeadlineBadge ? `${calculateTaskStatus(t.deadline).emoji} ` : '';
+                        return `**#${t.id}** | ${badge}**${t.name}**\n└ Mulai: \`${formatDateIndo(t.startAt)}\` → Deadline: \`${formatDateIndo(t.deadline)}\` | ${mentions}`;
+                    })
+                    .join('\n\n');
+            };
 
             const embed = new EmbedBuilder()
-                .setTitle(`📌 Detail Task #${task.id}: ${task.name}`)
+                .setTitle('🗂️ Semua Riwayat Task Server')
                 .addFields(
-                    { name: 'Status Sistem', value: task.status, inline: true },
-                    { name: 'Status Deadline', value: `${st.emoji} ${st.label} (${st.daysLeft} hari)`, inline: true },
-                    { name: 'Waktu Mulai', value: formatDateIndo(task.startAt), inline: false },
-                    { name: 'Deadline', value: formatDateIndo(task.deadline), inline: false },
-                    { name: 'Orang yang Terlibat', value: mentions, inline: false },
-                    { name: 'Dibuat Oleh', value: `<@${task.createdBy}> pada ${formatDateIndo(task.createdAt)}`, inline: false }
+                    {
+                        name: `🟢 Aktif (${aktifTasks.length})`,
+                        value: formatSection(aktifTasks, true),
+                        inline: false,
+                    },
+                    {
+                        name: `⏳ Terlewat (${terlewatTasks.length})`,
+                        value: formatSection(terlewatTasks, false),
+                        inline: false,
+                    },
+                    {
+                        name: `🗑️ Deleted (${deletedTasks.length})`,
+                        value: formatSection(deletedTasks, false),
+                        inline: false,
+                    }
                 )
-                .setColor(0x5865f2);
+                .setColor(0x5865f2)
+                .setFooter({ text: 'Menampilkan seluruh data task berdasarkan status' });
 
             return await interaction.reply({ embeds: [embed], ephemeral: true });
         }
@@ -250,6 +305,34 @@ module.exports = {
                 ephemeral: true,
             });
         }
+        if (subcommand === 'clear') {
+            const allTasks = await taskService.getAllTasks(interaction.guildId);
+            const deletedTasks = allTasks.filter(t => t.status === 'DELETED');
+
+            if (deletedTasks.length === 0) {
+                return await interaction.reply({
+                    content: '✨ Tidak ada task berstatus **Deleted** yang perlu dibersihkan.',
+                    ephemeral: true,
+                });
+            }
+
+            const row = new ActionRowBuilder().addComponents(
+                new ButtonBuilder()
+                    .setCustomId('btn_clear_confirm')
+                    .setLabel(`Ya, Bersihkan ${deletedTasks.length} Task`)
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId('btn_clear_cancel')
+                    .setLabel('Batal')
+                    .setStyle(ButtonStyle.Secondary)
+            );
+
+            return await interaction.reply({
+                content: `⚠️ Kamu akan menghapus permanen **${deletedTasks.length} task** di kategori **Deleted** dan mereset urutan ID task aktif mulai dari **#1**.\nLanjutkan?`,
+                components: [row],
+                ephemeral: true,
+            });
+        }
     },
 
     // 2. Handler Submit Modal (Create & Edit)
@@ -259,15 +342,17 @@ module.exports = {
         if (!isCreate && !isEdit) return;
 
         const name = interaction.fields.getTextInputValue('task_name').trim();
-        const startStr = interaction.fields.getTextInputValue('task_start');
-        const deadlineStr = interaction.fields.getTextInputValue('task_deadline');
+        const startDateStr = interaction.fields.getTextInputValue('task_start_date');
+        const startTimeStr = interaction.fields.getTextInputValue('task_start_time');
+        const deadlineDateStr = interaction.fields.getTextInputValue('task_deadline_date');
+        const deadlineTimeStr = interaction.fields.getTextInputValue('task_deadline_time');
 
-        const startParsed = parseInputDate(startStr);
-        const deadlineParsed = parseInputDate(deadlineStr);
+        const startParsed = combineDateAndTime(startDateStr, startTimeStr, '08:00');
+        const deadlineParsed = combineDateAndTime(deadlineDateStr, deadlineTimeStr, '23:59');
 
         if (!startParsed || !deadlineParsed) {
             return await interaction.reply({
-                content: '❌ Format tanggal tidak valid! Gunakan format **`YYYY-MM-DD HH:mm`** (contoh: `2026-11-15 20:00`).',
+                content: '❌ Format tanggal atau jam tidak valid!\n• Tanggal wajib format **`YYYY-MM-DD`** (contoh: `2026-11-20`)\n• Jam wajib format **`HH:mm`** (contoh: `15:30` atau kosongkan untuk default)',
                 ephemeral: true,
             });
         }
@@ -373,6 +458,21 @@ module.exports = {
 
             return await interaction.update({
                 content: `🗑️ Task **#${taskId}** berhasil dihapus dari daftar aktif (tersimpan di riwayat database).`,
+                components: [],
+            });
+        }
+        if (interaction.customId === 'btn_clear_cancel') {
+            return await interaction.update({
+                content: '❎ Pembersihan riwayat Deleted dibatalkan.',
+                components: [],
+            });
+        }
+
+        if (interaction.customId === 'btn_clear_confirm') {
+            const result = await taskService.clearDeletedTasks(interaction.guildId);
+
+            return await interaction.update({
+                content: `🧹 Berhasil membersihkan **${result.deletedCount} task** berstatus Deleted!\nUrutan ID untuk **${result.remainingCount} task** yang tersisa telah dirapikan mulai dari **#1**.`,
                 components: [],
             });
         }

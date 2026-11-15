@@ -17,8 +17,23 @@ function parseDate(dateInput) {
     return dayjs(dateInput).tz(TIMEZONE);
 }
 
-function parseInputDate(dateStr) {
-    const parsed = dayjs.tz(dateStr, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DD'], TIMEZONE);
+/**
+ * Menggabungkan input Tanggal (YYYY-MM-DD) dan Jam (HH:mm) ke timezone Asia/Jakarta.
+ * Jika jam kosong, otomatis memakai defaultTime (contoh: '08:00' atau '23:59').
+ */
+function combineDateAndTime(dateStr, timeStr, defaultTime = '00:00') {
+    const cleanDate = dateStr.trim();
+    const cleanTime = timeStr && timeStr.trim() !== '' ? timeStr.trim() : defaultTime;
+
+    const isDateValid = dayjs(cleanDate, 'YYYY-MM-DD', true).isValid();
+    const isTimeValid = dayjs(cleanTime, 'HH:mm', true).isValid();
+
+    if (!isDateValid || !isTimeValid) {
+        return null;
+    }
+
+    const combined = `${cleanDate} ${cleanTime}`;
+    const parsed = dayjs.tz(combined, 'YYYY-MM-DD HH:mm', TIMEZONE);
     return parsed.isValid() ? parsed : null;
 }
 
@@ -27,16 +42,22 @@ function formatDateIndo(dateInput, formatStr = 'D MMM YYYY HH:mm') {
 }
 
 function getDaysRemaining(deadlineDate) {
-    const now = getCurrentDate().startOf('day');
-    const target = parseDate(deadlineDate).startOf('day');
+    const now = getCurrentDate();
+    const target = parseDate(deadlineDate);
 
-    return target.diff(now, 'day');
+    const diffMs = target.diff(now);
+    if (diffMs <= 0) {
+        return 0;
+    }
+
+    const diffHours = diffMs / (1000 * 60 * 60);
+    return Math.ceil(diffHours / 24);
 }
 
 module.exports = {
     getCurrentDate,
     parseDate,
-    parseInputDate, 
+    combineDateAndTime,
     formatDateIndo,
     getDaysRemaining,
     TIMEZONE,
