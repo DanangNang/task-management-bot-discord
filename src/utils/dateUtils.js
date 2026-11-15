@@ -1,9 +1,11 @@
 const dayjs = require('dayjs');
 const utc = require('dayjs/plugin/utc');
 const timezone = require('dayjs/plugin/timezone');
+const customParseFormat = require('dayjs/plugin/customParseFormat');
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
+dayjs.extend(customParseFormat);
 
 const TIMEZONE = process.env.TIMEZONE || 'Asia/Jakarta';
 
@@ -13,6 +15,11 @@ function getCurrentDate() {
 
 function parseDate(dateInput) {
     return dayjs(dateInput).tz(TIMEZONE);
+}
+
+function parseInputDate(dateStr) {
+    const parsed = dayjs.tz(dateStr, ['YYYY-MM-DD HH:mm', 'YYYY-MM-DD'], TIMEZONE);
+    return parsed.isValid() ? parsed : null;
 }
 
 function formatDateIndo(dateInput, formatStr = 'D MMM YYYY HH:mm') {
@@ -29,6 +36,7 @@ function getDaysRemaining(deadlineDate) {
 module.exports = {
     getCurrentDate,
     parseDate,
+    parseInputDate, 
     formatDateIndo,
     getDaysRemaining,
     TIMEZONE,

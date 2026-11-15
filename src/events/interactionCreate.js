@@ -1,26 +1,46 @@
 const { Events } = require('discord.js');
+const taskCommand = require('../commands/task');
 
 module.exports = {
     name: Events.InteractionCreate,
     async execute(interaction) {
-        if (!interaction.isChatInputCommand()) return;
-
-        const command = interaction.client.commands.get(interaction.commandName);
-        if (!command) {
-            console.error(`[ERROR] Command ${interaction.commandName} tidak ditemukan.`);
-            return;
-        }
-
         try {
-            await command.execute(interaction);
+            // 1. Slash Commands
+            if (interaction.isChatInputCommand()) {
+                const command = interaction.client.commands.get(interaction.commandName);
+                if (!command) return;
+                await command.execute(interaction);
+                return;
+            }
+
+            // 2. Modal Submissions
+            if (interaction.isModalSubmit()) {
+                await taskCommand.handleModalSubmit(interaction);
+                return;
+            }
+
+            // 3. User Select Menus
+            if (interaction.isUserSelectMenu()) {
+                await taskCommand.handleUserSelect(interaction);
+                return;
+            }
+
+            // 4. Buttons
+            if (interaction.isButton()) {
+                await taskCommand.handleButton(interaction);
+                return;
+            }
         } catch (error) {
-            console.error(`[ERROR] Gagal mengeksekusi command ${interaction.commandName}:`, error);
-            const errorMessage = { content: '⚠️ Terjadi kesalahan saat menjalankan perintah ini.', ephemeral: true };
+            console.error('[ERROR] Gagal memproses interaksi Discord:', error);
+            const errorPayload = {
+                content: '⚠️ Terjadi kesalahan internal saat memproses permintaan kamu.',
+                ephemeral: true,
+            };
 
             if (interaction.replied || interaction.deferred) {
-                await interaction.followUp(errorMessage);
+                await interaction.followUp(errorPayload);
             } else {
-                await interaction.reply(errorMessage);
+                await interaction.reply(errorPayload);
             }
         }
     },
